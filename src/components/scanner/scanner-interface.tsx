@@ -155,7 +155,7 @@ export function ScannerInterface() {
                       <p className="text-foreground">{lastScan.log.userName}</p>
                       <p className="font-mono text-muted-foreground">{lastScan.log.userId}</p>
                       <Badge variant={lastScan.log.action === "check-in" ? "default" : "secondary"}>
-                        {lastScan.log.action === "check-in" ? "Checked In" : "Not Applicable"}
+                        {lastScan.log.action === "check-in" ? "Checked In" : "Checkout"}
                       </Badge>
                     </div>
                   )}
