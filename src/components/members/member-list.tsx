@@ -7,12 +7,24 @@ import { subscriptionService } from "@/src/services/subscription.service"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { QrCode, Trash2, RotateCw, Edit, History, AlertTriangle, Clock } from "lucide-react"
+import {
+  QrCode,
+  Trash2,
+  RotateCw,
+  Edit,
+  History,
+  AlertTriangle,
+  Clock,
+  Download,
+} from "lucide-react"
 import { QRCodeDisplay } from "../qr/qr-code-display"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { EditMemberDialog } from "./edit-member-dialog"
 import { SubscriptionHistoryDialog } from "./subscription-history-dialog"
 import { ScanHistoryDialog } from "./scan-history-dialog"
+
+import { jsPDF } from "jspdf"
+import autoTable from "jspdf-autotable"
 
 interface MemberListProps {
   users: User[]
@@ -29,7 +41,6 @@ export function MemberList({ users, onUpdate }: MemberListProps) {
   const [showScanHistory, setShowScanHistory] = useState(false)
   const [subscriptionCache, setSubscriptionCache] = useState<Map<string, Subscription | null>>(new Map())
 
-  // Load subscriptions into cache when users change
   useEffect(() => {
     const loadSubscriptions = async () => {
       const cache = new Map<string, Subscription | null>()
@@ -42,7 +53,6 @@ export function MemberList({ users, onUpdate }: MemberListProps) {
     loadSubscriptions()
   }, [users])
 
-  // Filter users whenever searchTerm or users change
   useEffect(() => {
     const term = searchTerm.toLowerCase()
     setFilteredUsers(
@@ -52,7 +62,7 @@ export function MemberList({ users, onUpdate }: MemberListProps) {
           user.email.toLowerCase().includes(term) ||
           user.phone.toLowerCase().includes(term)
         )
-      })
+      }),
     )
   }, [searchTerm, users])
 
@@ -114,6 +124,110 @@ export function MemberList({ users, onUpdate }: MemberListProps) {
     setShowScanHistory(true)
   }
 
+  // Format duration in "X hours Y minutes Z seconds" format, omitting zero units
+  const formatDuration = (ms: number): string => {
+    const totalSeconds = Math.floor(ms / 1000)
+    const hours = Math.floor(totalSeconds / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    const seconds = totalSeconds % 60
+
+    const parts = []
+    if (hours > 0) parts.push(hours === 1 ? "1 hour" : `${hours} hours`)
+    if (minutes > 0) parts.push(minutes === 1 ? "1 minute" : `${minutes} minutes`)
+    if (seconds > 0 || parts.length === 0) parts.push(seconds === 1 ? "1 second" : `${seconds} seconds`)
+
+    return parts.join(" ")
+  }
+
+  const handleDownloadReport = async (userId: string) => {
+    try {
+      const user = users.find((u) => u.userId === userId)
+      const userName = user ? user.name : "Unknown User"
+
+      const logs = await storageService.getScanLogsByUserId(userId)
+
+      if (!logs.length) {
+        alert("No check-in/out history available for this member.")
+        return
+      }
+
+      const sortedLogs = logs.sort(
+        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+      )
+
+      type Session = { checkIn: Date; checkOut: Date | null }
+      const sessions: Session[] = []
+      let lastCheckIn: Date | null = null
+
+      for (const log of sortedLogs) {
+        if (log.action.toLowerCase() === "check-in") {
+          lastCheckIn = new Date(log.timestamp)
+        } else if (log.action.toLowerCase() === "check-out" && lastCheckIn) {
+          sessions.push({ checkIn: lastCheckIn, checkOut: new Date(log.timestamp) })
+          lastCheckIn = null
+        }
+      }
+
+      if (lastCheckIn) {
+        sessions.push({ checkIn: lastCheckIn, checkOut: null })
+      }
+
+      // Prepare table data for PDF
+      const tableBody: (string | number)[][] = sessions.map(({ checkIn, checkOut }) => {
+        const durationMs = checkOut ? checkOut.getTime() - checkIn.getTime() : 0
+        return [
+          checkIn.toLocaleString(),
+          checkOut ? checkOut.toLocaleString() : "Still Checked In",
+          checkOut ? formatDuration(durationMs) : "N/A",
+        ]
+      })
+
+      let totalMilliseconds = 0
+      sessions.forEach(({ checkIn, checkOut }) => {
+        if (checkOut) {
+          totalMilliseconds += checkOut.getTime() - checkIn.getTime()
+        }
+      })
+
+      const totalHours = Math.floor(totalMilliseconds / 3600000)
+      const totalMinutes = Math.floor((totalMilliseconds % 3600000) / 60000)
+      const totalSeconds = Math.floor((totalMilliseconds % 60000) / 1000)
+
+      const totalParts: string[] = []
+      if (totalHours > 0) totalParts.push(totalHours === 1 ? "1 hour" : `${totalHours} hours`)
+      if (totalMinutes > 0) totalParts.push(totalMinutes === 1 ? "1 minute" : `${totalMinutes} minutes`)
+      if (totalSeconds > 0 || totalParts.length === 0) totalParts.push(totalSeconds === 1 ? "1 second" : `${totalSeconds} seconds`)
+
+      const totalTimeStr = totalParts.join(" ")
+
+      const doc = new jsPDF()
+
+      doc.setFontSize(18)
+      doc.text(`Check-In Report for: ${userName}`, 14, 15)
+
+      autoTable(doc, {
+        head: [["Check-In Time", "Check-Out Time", "Duration"]],
+        body: tableBody,
+        startY: 25,
+        styles: { cellPadding: 2, fontSize: 10 },
+        headStyles: { fillColor: [41, 128, 185] },
+        columnStyles: {
+          0: { cellWidth: 60 },
+          1: { cellWidth: 60 },
+          2: { cellWidth: 40, halign: "right" },
+        },
+      })
+
+      doc.setFontSize(12)
+      doc.text(`Total Time Spent: ${totalTimeStr}`, 14, (doc as any).lastAutoTable.finalY + 10)
+
+      doc.save(`CheckInReport_${userName.replace(/\s+/g, "_")}_${userId}.pdf`)
+    } catch (error) {
+      console.error("Failed to download report:", error)
+      alert("Failed to download report")
+    }
+  }
+
   return (
     <>
       {/* Search Bar */}
@@ -170,30 +284,15 @@ export function MemberList({ users, onUpdate }: MemberListProps) {
                 </div>
 
                 <div className="flex flex-wrap gap-2 justify-start md:justify-end">
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={() => handleShowEdit(user)}
-                    title="Edit Member"
-                  >
+                  <Button size="icon" variant="outline" onClick={() => handleShowEdit(user)} title="Edit Member">
                     <Edit className="w-4 h-4" />
                   </Button>
 
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={() => handleShowHistory(user)}
-                    title="Subscription History"
-                  >
+                  <Button size="icon" variant="outline" onClick={() => handleShowHistory(user)} title="Subscription History">
                     <History className="w-4 h-4" />
                   </Button>
 
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={() => handleShowQR(user)}
-                    title="Show QR Code"
-                  >
+                  <Button size="icon" variant="outline" onClick={() => handleShowQR(user)} title="Show QR Code">
                     <QrCode className="w-4 h-4" />
                   </Button>
 
@@ -208,22 +307,22 @@ export function MemberList({ users, onUpdate }: MemberListProps) {
                     </Button>
                   )}
 
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={() => handleDelete(user.userId)}
-                    title="Delete Member"
-                  >
+                  <Button size="icon" variant="outline" onClick={() => handleDelete(user.userId)} title="Delete Member">
                     <Trash2 className="w-4 h-4" />
                   </Button>
 
+                  <Button size="icon" variant="outline" onClick={() => handleShowScanHistory(user)} title="Scan History">
+                    <Clock className="w-4 h-4" />
+                  </Button>
+
+                  {/* Download Check-In Report Button */}
                   <Button
                     size="icon"
                     variant="outline"
-                    onClick={() => handleShowScanHistory(user)}
-                    title="Scan History"
+                    onClick={() => handleDownloadReport(user.userId)}
+                    title="Download Check-In Report"
                   >
-                    <Clock className="w-4 h-4" />
+                    <Download className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
@@ -237,9 +336,7 @@ export function MemberList({ users, onUpdate }: MemberListProps) {
           <DialogHeader>
             <DialogTitle>QR Code - {selectedUser?.name}</DialogTitle>
           </DialogHeader>
-          {selectedUser && (
-            <QRCodeDisplay userId={selectedUser.userId} userName={selectedUser.name} />
-          )}
+          {selectedUser && <QRCodeDisplay userId={selectedUser.userId} userName={selectedUser.name} />}
         </DialogContent>
       </Dialog>
 
