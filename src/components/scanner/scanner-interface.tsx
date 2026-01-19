@@ -495,29 +495,58 @@ export function ScannerInterface() {
                 <p className="text-sm text-white-600 ">ID: {lastScan.log?.userId}</p>
 
                 {/* Subscription Type Indicator */}
-                <div className="mt-2">
-                  {(() => {
-                    if (!lastScan.subscription) return null
+             <div className="mt-2">
+  {(() => {
+    if (!lastScan.subscription) return null
 
-                    const start = new Date(lastScan.subscription.startDate)
-                    const end = new Date(lastScan.subscription.endDate)
-                    const months =
-                      (end.getFullYear() - start.getFullYear()) * 12 +
-                      (end.getMonth() - start.getMonth())
+    const start = new Date(lastScan.subscription.startDate)
+    const end = new Date(lastScan.subscription.endDate)
 
-                    const regularPlans = [1, 3, 6, 12]
-                    const isRegular = regularPlans.includes(months)
+    // duration in hours
+    const durationHours =
+      (end.getTime() - start.getTime()) / (1000 * 60 * 60)
 
-                    return (
-                      <Badge
-                        variant={isRegular ? "default" : "outline"}
-                        className={isRegular ? "" : "text-blue-600 border-blue-600"}
-                      >
-                        {isRegular ? "Regular" : "Walk-in"}
-                      </Badge>
-                    )
-                  })()}
-                </div>
+    // DAILY = expires at midnight AND less than 24h
+    const isDaily =
+      end.getHours() === 0 &&
+      end.getMinutes() === 0 &&
+      durationHours <= 24
+
+    // REGULAR = month-based plans
+    const months =
+      (end.getFullYear() - start.getFullYear()) * 12 +
+      (end.getMonth() - start.getMonth())
+
+    const regularPlans = [1, 6, 12]
+    const isRegular = regularPlans.includes(months)
+
+    if (isDaily) {
+      return (
+        <Badge className="bg-purple-600 text-white">
+          Daily Pass
+        </Badge>
+      )
+    }
+
+    if (isRegular) {
+      return (
+        <Badge variant="default">
+          Regular
+        </Badge>
+      )
+    }
+
+    return (
+      <Badge
+        variant="outline"
+        className="text-blue-600 border-blue-600"
+      >
+        Walk-in
+      </Badge>
+    )
+  })()}
+</div>
+
 
                 {/* EXPIRY */}
                 <div className="mt-4">
