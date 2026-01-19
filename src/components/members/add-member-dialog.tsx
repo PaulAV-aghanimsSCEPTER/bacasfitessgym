@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -31,10 +30,16 @@ const subscriptionPlans = [
   { label: "1 Year", value: "12", months: 12 },
 ]
 
-export function AddMemberDialog({ open, onOpenChange, onMemberAdded }: AddMemberDialogProps) {
+export function AddMemberDialog({
+  open,
+  onOpenChange,
+  onMemberAdded,
+}: AddMemberDialogProps) {
   const [step, setStep] = useState<"form" | "qr">("form")
   const [newUser, setNewUser] = useState<User | null>(null)
-  const [subscriptionType, setSubscriptionType] = useState<"regular" | "walkin">("regular")
+  const [subscriptionType, setSubscriptionType] =
+    useState<"regular" | "walkin" | "daily">("regular")
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -46,23 +51,42 @@ export function AddMemberDialog({ open, onOpenChange, onMemberAdded }: AddMember
     endDate: format(addMonths(new Date(), 1), "yyyy-MM-dd"),
   })
 
-  // Update endDate automatically ONLY if subscription type is regular
+  /* ---------------- REGULAR AUTO END DATE ---------------- */
   useEffect(() => {
     if (subscriptionType === "regular") {
-      const plan = subscriptionPlans.find((p) => p.value === formData.subscriptionPlan)
+      const plan = subscriptionPlans.find(
+        (p) => p.value === formData.subscriptionPlan
+      )
       if (plan) {
         const start = new Date(formData.startDate)
         const end = addMonths(start, plan.months)
-        setFormData((prev) => ({ ...prev, endDate: format(end, "yyyy-MM-dd") }))
+        setFormData((prev) => ({
+          ...prev,
+          endDate: format(end, "yyyy-MM-dd"),
+        }))
       }
     }
   }, [formData.subscriptionPlan, formData.startDate, subscriptionType])
+
+  /* ---------------- DAILY AUTO EXPIRY (12:00 AM NEXT DAY) ---------------- */
+  useEffect(() => {
+    if (subscriptionType === "daily") {
+      const start = new Date(formData.startDate)
+      const end = new Date(start)
+      end.setDate(start.getDate() + 1)
+      end.setHours(0, 0, 0, 0)
+
+      setFormData((prev) => ({
+        ...prev,
+        endDate: format(end, "yyyy-MM-dd"),
+      }))
+    }
+  }, [subscriptionType, formData.startDate])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     try {
-      // Basic validation for walk-in dates
       if (subscriptionType === "walkin") {
         if (!formData.startDate || !formData.endDate) {
           alert("Please select subscription start and end dates.")
@@ -74,34 +98,49 @@ export function AddMemberDialog({ open, onOpenChange, onMemberAdded }: AddMember
         }
       }
 
-      // Generate user ID
       const userId = await storageService.generateUserId()
       const now = new Date().toISOString()
 
-      // Create user
       const user: User = {
         userId,
         name: formData.name,
         email: formData.email,
         phone: formData.phone,
-        heightCm: formData.heightCm ? parseFloat(formData.heightCm) : undefined,
-        weightKg: formData.weightKg ? parseFloat(formData.weightKg) : undefined,
+        heightCm: formData.heightCm
+          ? parseFloat(formData.heightCm)
+          : undefined,
+        weightKg: formData.weightKg
+          ? parseFloat(formData.weightKg)
+          : undefined,
         createdAt: now,
         updatedAt: now,
       }
 
       await storageService.addUser(user)
 
+      let startISO = new Date(formData.startDate).toISOString()
+      let endISO = new Date(formData.endDate).toISOString()
+
+      if (subscriptionType === "daily") {
+        const start = new Date(formData.startDate)
+        const end = new Date(start)
+        end.setDate(start.getDate() + 1)
+        end.setHours(0, 0, 0, 0)
+
+        startISO = start.toISOString()
+        endISO = end.toISOString()
+      }
+
       const subscription = {
         userId,
-        startDate: new Date(formData.startDate).toISOString(),
-        endDate: new Date(formData.endDate).toISOString(),
+        startDate: startISO,
+        endDate: endISO,
         status: "active" as const,
         createdAt: now,
       }
+
       await storageService.addOrUpdateSubscription(subscription)
 
-      // Show QR code
       setNewUser(user)
       setStep("qr")
     } catch (error) {
@@ -128,7 +167,9 @@ export function AddMemberDialog({ open, onOpenChange, onMemberAdded }: AddMember
     onMemberAdded()
   }
 
-  const selectedPlan = subscriptionPlans.find((p) => p.value === formData.subscriptionPlan)
+  const selectedPlan = subscriptionPlans.find(
+    (p) => p.value === formData.subscriptionPlan
+  )
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -144,151 +185,173 @@ export function AddMemberDialog({ open, onOpenChange, onMemberAdded }: AddMember
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Full Name</Label>
+                <Label>Full Name</Label>
                 <Input
-                  id="name"
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="John Doe"
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
                   required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label>Email</Label>
                 <Input
-                  id="email"
                   type="email"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="john@example.com"
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
                   required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
+                <Label>Phone</Label>
                 <Input
-                  id="phone"
-                  type="tel"
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="+1 234 567 8900"
+                  onChange={(e) =>
+                    setFormData({ ...formData, phone: e.target.value })
+                  }
                   required
                 />
               </div>
 
-              {/* Height and Weight */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="heightCm">Height (cm)</Label>
+                <div>
+                  <Label>Height (cm)</Label>
                   <Input
-                    id="heightCm"
                     type="number"
-                    step="0.1"
-                    min="0"
-                    max="300"
                     value={formData.heightCm}
-                    onChange={(e) => setFormData({ ...formData, heightCm: e.target.value })}
-                    placeholder="170"
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        heightCm: e.target.value,
+                      })
+                    }
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="weightKg">Weight (kg)</Label>
+                <div>
+                  <Label>Weight (kg)</Label>
                   <Input
-                    id="weightKg"
                     type="number"
-                    step="0.1"
-                    min="0"
-                    max="500"
                     value={formData.weightKg}
-                    onChange={(e) => setFormData({ ...formData, weightKg: e.target.value })}
-                    placeholder="70"
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        weightKg: e.target.value,
+                      })
+                    }
                   />
                 </div>
               </div>
 
-              {/* Subscription Type */}
               <div className="space-y-2">
-                <Label htmlFor="subscriptionType">Subscription Type</Label>
+                <Label>Subscription Type</Label>
                 <Select
                   value={subscriptionType}
-                  onValueChange={(value) => setSubscriptionType(value as "regular" | "walkin")}
+                  onValueChange={(v) =>
+                    setSubscriptionType(
+                      v as "regular" | "walkin" | "daily"
+                    )
+                  }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select subscription type" />
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="regular">Regular</SelectItem>
-                    <SelectItem value="walkin">Walk-in (Custom Dates)</SelectItem>
+                    <SelectItem value="walkin">
+                      Walk-in (Custom Dates)
+                    </SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* If normal, show plan + auto dates */}
               {subscriptionType === "regular" && (
                 <>
-                  <div className="space-y-2">
-                    <Label htmlFor="subscriptionPlan">Subscription Plan</Label>
-                    <Select
-                      value={formData.subscriptionPlan}
-                      onValueChange={(value) => setFormData({ ...formData, subscriptionPlan: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select plan" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {subscriptionPlans.map((plan) => (
-                          <SelectItem key={plan.value} value={plan.value}>
-                            {plan.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <Label>Subscription Plan</Label>
+                  <Select
+                    value={formData.subscriptionPlan}
+                    onValueChange={(v) =>
+                      setFormData({ ...formData, subscriptionPlan: v })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subscriptionPlans.map((p) => (
+                        <SelectItem key={p.value} value={p.value}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="startDate">Start Date</Label>
-                      <Input
-                        id="startDate"
-                        type="date"
-                        value={formData.startDate}
-                        onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="endDate">End Date</Label>
-                      <Input id="endDate" type="date" value={formData.endDate} disabled className="bg-muted" />
-                    </div>
+                    <Input
+                      type="date"
+                      value={formData.startDate}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          startDate: e.target.value,
+                        })
+                      }
+                    />
+                    <Input
+                      type="date"
+                      value={formData.endDate}
+                      disabled
+                    />
                   </div>
                 </>
               )}
 
-              {/* If walk-in, show manual start/end date inputs */}
               {subscriptionType === "walkin" && (
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="walkinStartDate">Start Date</Label>
-                    <Input
-                      id="walkinStartDate"
-                      type="date"
-                      value={formData.startDate}
-                      onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="walkinEndDate">End Date</Label>
-                    <Input
-                      id="walkinEndDate"
-                      type="date"
-                      value={formData.endDate}
-                      onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                      required
-                    />
-                  </div>
+                  <Input
+                    type="date"
+                    value={formData.startDate}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        startDate: e.target.value,
+                      })
+                    }
+                  />
+                  <Input
+                    type="date"
+                    value={formData.endDate}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        endDate: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              )}
+
+              {subscriptionType === "daily" && (
+                <div className="grid grid-cols-2 gap-4">
+                  <Input
+                    type="date"
+                    value={formData.startDate}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        startDate: e.target.value,
+                      })
+                    }
+                  />
+                  <Input
+                    value="12:00 AM (Next Day)"
+                    disabled
+                  />
                 </div>
               )}
 
@@ -304,48 +367,21 @@ export function AddMemberDialog({ open, onOpenChange, onMemberAdded }: AddMember
           <>
             <DialogHeader>
               <DialogTitle>Member Created Successfully!</DialogTitle>
-              <DialogDescription>QR code generated for {newUser?.name}</DialogDescription>
+              <DialogDescription>
+                QR code generated for {newUser?.name}
+              </DialogDescription>
             </DialogHeader>
 
             {newUser && (
-              <div className="space-y-4">
-                <div className="bg-muted rounded-lg p-4 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">User ID:</span>
-                    <span className="font-mono font-semibold text-primary">{newUser.userId}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Name:</span>
-                    <span className="font-medium">{newUser.name}</span>
-                  </div>
-                  {newUser.heightCm && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Height:</span>
-                      <span className="font-medium">{newUser.heightCm} cm</span>
-                    </div>
-                  )}
-                  {newUser.weightKg && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Weight:</span>
-                      <span className="font-medium">{newUser.weightKg} kg</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Subscription:</span>
-                    <span className="font-medium text-success">
-                      {subscriptionType === "regular"
-                        ? selectedPlan?.label + " Active"
-                        : "Walk-in (Custom Dates)"}
-                    </span>
-                  </div>
-                </div>
-
-                <QRCodeDisplay userId={newUser.userId} userName={newUser.name} />
-
+              <>
+                <QRCodeDisplay
+                  userId={newUser.userId}
+                  userName={newUser.name}
+                />
                 <Button onClick={handleClose} className="w-full">
                   Done
                 </Button>
-              </div>
+              </>
             )}
           </>
         )}

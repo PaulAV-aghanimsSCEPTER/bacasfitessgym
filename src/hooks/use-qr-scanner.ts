@@ -1,65 +1,135 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import { storageService } from "@/src/services/storage.service"
+
+/* ---------------- TYPES ---------------- */
+
+type ScanStatus = "valid" | "expired" | "inactive" | "not_found"
+
+interface ScanResult {
+  status: ScanStatus
+  message: string
+  subscription?: {
+    userId: string
+    startDate: string
+    endDate: string
+    status: string
+  }
+}
 
 interface QRScannerHook {
   scannedCode: string
   isScanning: boolean
+  scanResult: ScanResult | null
   resetScanner: () => void
 }
 
-export function useQRScanner(onScan: (code: string) => void, debounceMs = 500): QRScannerHook {
+/* ---------------- HOOK ---------------- */
+
+export function useQRScanner(
+  onScan: (code: string, result: ScanResult) => void,
+  debounceMs = 500
+): QRScannerHook {
   const [scannedCode, setScannedCode] = useState("")
   const [isScanning, setIsScanning] = useState(false)
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null)
+
   const bufferRef = useRef("")
-  const timeoutRef = useRef<NodeJS.Timeout>()
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   const lastScanRef = useRef<number>(0)
+
+  /* ---------------- RESET ---------------- */
 
   const resetScanner = useCallback(() => {
     setScannedCode("")
     setIsScanning(false)
+    setScanResult(null)
     bufferRef.current = ""
   }, [])
 
+  /* ---------------- VALIDATION ---------------- */
+
+  const validateSubscription = async (userId: string): Promise<ScanResult> => {
+    const subscription = await storageService.getSubscriptionByUserId(userId)
+
+    if (!subscription) {
+      return {
+        status: "not_found",
+        message: "No subscription found",
+      }
+    }
+
+    if (subscription.status !== "active") {
+      return {
+        status: "inactive",
+        message: "Subscription inactive",
+        subscription,
+      }
+    }
+
+    const now = new Date()
+    const endDate = new Date(subscription.endDate)
+
+    if (now > endDate) {
+      return {
+        status: "expired",
+        message: "Subscription expired",
+        subscription,
+      }
+    }
+
+    return {
+      status: "valid",
+      message: "Access granted",
+      subscription,
+    }
+  }
+
+  /* ---------------- KEYBOARD SCAN ---------------- */
+
   useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      // Ignore if user is typing in an input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+    const handleKeyPress = async (e: KeyboardEvent) => {
+      // Ignore typing in inputs
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
         return
       }
 
-      // Clear previous timeout
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current)
       }
 
-      // Enter key indicates end of scan
+      // ENTER = scan finished
       if (e.key === "Enter") {
         const code = bufferRef.current.trim()
+        bufferRef.current = ""
 
-        // Prevent duplicate scans within debounce period
         const now = Date.now()
-        if (code && now - lastScanRef.current > debounceMs) {
-          lastScanRef.current = now
-          setScannedCode(code)
-          setIsScanning(true)
-          onScan(code)
+        if (!code || now - lastScanRef.current < debounceMs) return
 
-          // Reset after scan
-          setTimeout(() => {
-            resetScanner()
-          }, 2000)
+        lastScanRef.current = now
+        setIsScanning(true)
+        setScannedCode(code)
+
+        try {
+          const result = await validateSubscription(code)
+          setScanResult(result)
+          onScan(code, result)
+        } catch (err) {
+          console.error("QR scan error:", err)
         }
 
-        bufferRef.current = ""
+        setTimeout(resetScanner, 2000)
         return
       }
 
-      // Add character to buffer
+      // Collect characters
       if (e.key.length === 1) {
         bufferRef.current += e.key
 
-        // Auto-reset buffer after 100ms of no input
         timeoutRef.current = setTimeout(() => {
           bufferRef.current = ""
         }, 100)
@@ -70,15 +140,16 @@ export function useQRScanner(onScan: (code: string) => void, debounceMs = 500): 
 
     return () => {
       window.removeEventListener("keypress", handleKeyPress)
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
-      }
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
     }
   }, [onScan, debounceMs, resetScanner])
+
+  /* ---------------- RETURN ---------------- */
 
   return {
     scannedCode,
     isScanning,
+    scanResult,
     resetScanner,
   }
 }
