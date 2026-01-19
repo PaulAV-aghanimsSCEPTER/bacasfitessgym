@@ -13,7 +13,7 @@ export function isSubscriptionActive(
   return subscription.status === "active" && endDate >= now
 }
 
-/* ================= CREATE SUB ================= */
+/* ================= CREATE REGULAR SUB ================= */
 export function createSubscription(
   userId: string,
   durationMonths = 1
@@ -28,6 +28,27 @@ export function createSubscription(
     endDate: endDate.toISOString(),
     status: "active",
     createdAt: now.toISOString(),
+  }
+}
+
+/* ================= CREATE DAILY SUB ================= */
+export function createDailySubscription(
+  userId: string,
+  startDate?: Date
+): Subscription {
+  const start = startDate ? new Date(startDate) : new Date()
+  const end = new Date(start)
+
+  // ALWAYS expire at 12:00 AM next day
+  end.setDate(start.getDate() + 1)
+  end.setHours(0, 0, 0, 0)
+
+  return {
+    userId,
+    startDate: start.toISOString(),
+    endDate: end.toISOString(),
+    status: "active",
+    createdAt: new Date().toISOString(),
   }
 }
 
@@ -97,6 +118,16 @@ export async function renewWalkIn(
   return subscription
 }
 
+/* ================= RENEW DAILY ================= */
+export async function renewDaily(
+  userId: string,
+  startDate?: Date
+): Promise<Subscription> {
+  const subscription = createDailySubscription(userId, startDate)
+  await storage.addOrUpdateSubscription(subscription)
+  return subscription
+}
+
 /* ================= HELPERS ================= */
 export function getRemainingDays(
   subscription: Subscription | null
@@ -130,9 +161,11 @@ export async function getUsersWithExpiringSubs(
 export const subscriptionService = {
   isSubscriptionActive,
   createSubscription,
+  createDailySubscription,
   validateAccess,
   renewSubscription,
   renewWalkIn,
+  renewDaily,
   getRemainingDays,
   isExpiringSoon,
   getUsersWithExpiringSubs,
