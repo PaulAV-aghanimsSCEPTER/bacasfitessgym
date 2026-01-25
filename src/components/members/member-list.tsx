@@ -78,8 +78,8 @@ export function MemberList({ users, onUpdate }: MemberListProps) {
       users.filter(
         (u) =>
           u.name.toLowerCase().includes(term) ||
-          u.email.toLowerCase().includes(term) ||
-          u.phone.toLowerCase().includes(term) ||
+          (u.email && u.email.toLowerCase().includes(term)) ||
+          (u.phone && u.phone.toLowerCase().includes(term)) ||
           u.userId.toLowerCase().includes(term)
       )
     )
@@ -122,8 +122,8 @@ export function MemberList({ users, onUpdate }: MemberListProps) {
   const downloadTotalHoursCSV = async () => {
     const rows: {
       name: string
-      email: string
-      phone: string
+      email: string | undefined
+      phone: string | undefined
       heightCm: number | undefined
       weightKg: number | undefined
       totalMs: number
@@ -168,8 +168,8 @@ export function MemberList({ users, onUpdate }: MemberListProps) {
       ...rows.map((r, i) => [
         i + 1,
         r.name,
-        r.email,
-        r.phone,
+        r.email || "",
+        r.phone || "",
         r.heightCm || "",
         r.weightKg || "",
         (r.totalMs / 3600000).toFixed(2),

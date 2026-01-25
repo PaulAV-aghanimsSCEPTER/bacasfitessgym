@@ -6,6 +6,9 @@ import type {
   ScanLog,
   ActiveSession,
   SubscriptionHistory,
+  MedicalHistory,
+  EmergencyContact,
+  LiabilityWaiver,
 } from "@/src/types"
 import { supabase } from "./supabase"
 
@@ -31,6 +34,11 @@ export async function getUsers(): Promise<User[]> {
     name: user.name,
     email: user.email,
     phone: user.phone,
+    birthday: user.birthday,
+    age: user.age,
+    address: user.address,
+    goal: user.goal,
+    programType: user.program_type,
     heightCm: user.height_cm,
     weightKg: user.weight_kg,
     createdAt: user.created_at,
@@ -52,6 +60,11 @@ export async function getUserById(userId: string): Promise<User | null> {
     name: data.name,
     email: data.email,
     phone: data.phone,
+    birthday: data.birthday,
+    age: data.age,
+    address: data.address,
+    goal: data.goal,
+    programType: data.program_type,
     heightCm: data.height_cm,
     weightKg: data.weight_kg,
     createdAt: data.created_at,
@@ -60,20 +73,36 @@ export async function getUserById(userId: string): Promise<User | null> {
 }
 
 export async function addUser(user: User): Promise<void> {
-  const { error } = await supabase.from("users").insert([
-    {
-      user_id: user.userId,
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      height_cm: user.heightCm || null,
-      weight_kg: user.weightKg || null,
-      created_at: user.createdAt,
-      updated_at: user.updatedAt,
-    },
-  ])
+  const insertData = {
+    user_id: user.userId,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    birthday: user.birthday || null,
+    age: user.age || null,
+    address: user.address || null,
+    goal: user.goal || null,
+    program_type: user.programType || null,
+    height_cm: user.heightCm || null,
+    weight_kg: user.weightKg || null,
+    created_at: user.createdAt,
+    updated_at: user.updatedAt,
+  }
 
-  if (error) console.error("Error adding user:", error)
+  console.log("Inserting user:", insertData)
+
+  const { data, error } = await supabase
+    .from("users")
+    .insert([insertData])
+    .select()
+
+  if (error) {
+    console.error("Error adding user:", JSON.stringify(error, null, 2))
+    console.error("Error details:", error)
+    throw new Error(`User insert failed: ${error.message || JSON.stringify(error)}`)
+  }
+
+  console.log("User created successfully:", data)
 }
 
 export async function updateUser(
@@ -87,6 +116,11 @@ export async function updateUser(
   if (updates.name !== undefined) updateData.name = updates.name
   if (updates.email !== undefined) updateData.email = updates.email
   if (updates.phone !== undefined) updateData.phone = updates.phone
+  if (updates.birthday !== undefined) updateData.birthday = updates.birthday || null
+  if (updates.age !== undefined) updateData.age = updates.age || null
+  if (updates.address !== undefined) updateData.address = updates.address || null
+  if (updates.goal !== undefined) updateData.goal = updates.goal || null
+  if (updates.programType !== undefined) updateData.program_type = updates.programType || null
   if (updates.heightCm !== undefined) updateData.height_cm = updates.heightCm || null
   if (updates.weightKg !== undefined) updateData.weight_kg = updates.weightKg || null
 
@@ -118,6 +152,11 @@ export async function getSubscriptions(): Promise<Subscription[]> {
     startDate: sub.start_date,
     endDate: sub.end_date,
     status: sub.status,
+    planDuration: sub.plan_duration,
+    membershipType: sub.membership_type,
+    coachingPreference: sub.coaching_preference,
+    paymentStatus: sub.payment_status,
+    paymentDate: sub.payment_date,
     createdAt: sub.created_at,
   }))
 }
@@ -138,6 +177,11 @@ export async function getSubscriptionByUserId(
     startDate: data.start_date,
     endDate: data.end_date,
     status: data.status,
+    planDuration: data.plan_duration,
+    membershipType: data.membership_type,
+    coachingPreference: data.coaching_preference,
+    paymentStatus: data.payment_status,
+    paymentDate: data.payment_date,
     createdAt: data.created_at,
   }
 }
@@ -150,28 +194,269 @@ export async function addOrUpdateSubscription(
   if (existing) {
     await archiveSubscription(existing)
 
-    const { error } = await supabase
+    const updateData = {
+      start_date: subscription.startDate,
+      end_date: subscription.endDate,
+      status: subscription.status,
+      plan_duration: subscription.planDuration || null,
+      membership_type: subscription.membershipType || null,
+      coaching_preference: subscription.coachingPreference ?? false,
+      payment_status: subscription.paymentStatus ?? "not paid",
+      payment_date: subscription.paymentDate || null,
+    }
+
+    console.log("Updating subscription:", updateData)
+
+    const { data, error } = await supabase
       .from("subscriptions")
-      .update({
-        start_date: subscription.startDate,
-        end_date: subscription.endDate,
-        status: subscription.status,
-      })
+      .update(updateData)
       .eq("user_id", subscription.userId)
+      .select()
 
-    if (error) console.error("Error updating subscription:", error)
+    if (error) {
+      console.error("Error updating subscription:", JSON.stringify(error, null, 2))
+      throw new Error(`Subscription update failed: ${error.message || JSON.stringify(error)}`)
+    }
   } else {
-    const { error } = await supabase.from("subscriptions").insert([
-      {
-        user_id: subscription.userId,
-        start_date: subscription.startDate,
-        end_date: subscription.endDate,
-        status: subscription.status,
-        created_at: subscription.createdAt,
-      },
-    ])
+    const insertData = {
+      user_id: subscription.userId,
+      start_date: subscription.startDate,
+      end_date: subscription.endDate,
+      status: subscription.status,
+      plan_duration: subscription.planDuration || null,
+      membership_type: subscription.membershipType || null,
+      coaching_preference: subscription.coachingPreference ?? false,
+      payment_status: subscription.paymentStatus ?? "not paid",
+      payment_date: subscription.paymentDate || null,
+      created_at: subscription.createdAt,
+    }
 
-    if (error) console.error("Error adding subscription:", error)
+    console.log("Inserting subscription:", insertData)
+
+    const { data, error } = await supabase
+      .from("subscriptions")
+      .insert([insertData])
+      .select()
+
+    if (error) {
+      console.error("Error adding subscription:", JSON.stringify(error, null, 2))
+      console.error("Error details:", error)
+      throw new Error(`Subscription insert failed: ${error.message || JSON.stringify(error)}`)
+    }
+
+    console.log("Subscription created successfully:", data)
+  }
+}
+
+//
+// ==============================
+// MEDICAL HISTORY
+// ==============================
+//
+
+export async function getMedicalHistory(
+  userId: string,
+): Promise<MedicalHistory | null> {
+  const { data, error } = await supabase
+    .from("medical_history")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  if (error || !data) return null
+
+  return {
+    userId: data.user_id,
+    heartProblems: data.heart_problems,
+    bloodPressureProblems: data.blood_pressure_problems,
+    chestPainExercising: data.chest_pain_exercising,
+    asthmaBreathingProblems: data.asthma_breathing_problems,
+    jointProblems: data.joint_problems,
+    neckBackProblems: data.neck_back_problems,
+    pregnantRecentBirth: data.pregnant_recent_birth,
+    otherMedicalConditions: data.other_medical_conditions,
+    otherMedicalDetails: data.other_medical_details,
+    smoking: data.smoking,
+    medication: data.medication,
+    medicationDetails: data.medication_details,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  }
+}
+
+export async function addMedicalHistory(
+  medicalHistory: MedicalHistory,
+): Promise<void> {
+  const insertData = {
+    user_id: medicalHistory.userId,
+    heart_problems: medicalHistory.heartProblems,
+    blood_pressure_problems: medicalHistory.bloodPressureProblems,
+    chest_pain_exercising: medicalHistory.chestPainExercising,
+    asthma_breathing_problems: medicalHistory.asthmaBreathingProblems,
+    joint_problems: medicalHistory.jointProblems,
+    neck_back_problems: medicalHistory.neckBackProblems,
+    pregnant_recent_birth: medicalHistory.pregnantRecentBirth,
+    other_medical_conditions: medicalHistory.otherMedicalConditions,
+    other_medical_details: medicalHistory.otherMedicalDetails || null,
+    smoking: medicalHistory.smoking,
+    medication: medicalHistory.medication,
+    medication_details: medicalHistory.medicationDetails || null,
+    created_at: medicalHistory.createdAt,
+    updated_at: medicalHistory.updatedAt,
+  }
+
+  const { data, error } = await supabase
+    .from("medical_history")
+    .insert([insertData])
+    .select()
+
+  if (error) {
+    console.error("Error adding medical history:", JSON.stringify(error, null, 2))
+    throw new Error(`Medical history insert failed: ${error.message || JSON.stringify(error)}`)
+  }
+}
+
+export async function updateMedicalHistory(
+  userId: string,
+  updates: Partial<MedicalHistory>,
+): Promise<void> {
+  const updateData: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  }
+
+  if (updates.heartProblems !== undefined) updateData.heart_problems = updates.heartProblems
+  if (updates.bloodPressureProblems !== undefined) updateData.blood_pressure_problems = updates.bloodPressureProblems
+  if (updates.chestPainExercising !== undefined) updateData.chest_pain_exercising = updates.chestPainExercising
+  if (updates.asthmaBreathingProblems !== undefined) updateData.asthma_breathing_problems = updates.asthmaBreathingProblems
+  if (updates.jointProblems !== undefined) updateData.joint_problems = updates.jointProblems
+  if (updates.neckBackProblems !== undefined) updateData.neck_back_problems = updates.neckBackProblems
+  if (updates.pregnantRecentBirth !== undefined) updateData.pregnant_recent_birth = updates.pregnantRecentBirth
+  if (updates.otherMedicalConditions !== undefined) updateData.other_medical_conditions = updates.otherMedicalConditions
+  if (updates.otherMedicalDetails !== undefined) updateData.other_medical_details = updates.otherMedicalDetails || null
+  if (updates.smoking !== undefined) updateData.smoking = updates.smoking
+  if (updates.medication !== undefined) updateData.medication = updates.medication
+  if (updates.medicationDetails !== undefined) updateData.medication_details = updates.medicationDetails || null
+
+  const { error } = await supabase
+    .from("medical_history")
+    .update(updateData)
+    .eq("user_id", userId)
+
+  if (error) console.error("Error updating medical history:", error)
+}
+
+//
+// ==============================
+// EMERGENCY CONTACTS
+// ==============================
+//
+
+export async function getEmergencyContact(
+  userId: string,
+): Promise<EmergencyContact | null> {
+  const { data, error } = await supabase
+    .from("emergency_contacts")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  if (error || !data) return null
+
+  return {
+    userId: data.user_id,
+    contactName: data.contact_name,
+    contactNumber: data.contact_number,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  }
+}
+
+export async function addEmergencyContact(
+  emergencyContact: EmergencyContact,
+): Promise<void> {
+  const insertData = {
+    user_id: emergencyContact.userId,
+    contact_name: emergencyContact.contactName,
+    contact_number: emergencyContact.contactNumber,
+    created_at: emergencyContact.createdAt,
+    updated_at: emergencyContact.updatedAt,
+  }
+
+  const { data, error } = await supabase
+    .from("emergency_contacts")
+    .insert([insertData])
+    .select()
+
+  if (error) {
+    console.error("Error adding emergency contact:", JSON.stringify(error, null, 2))
+    throw new Error(`Emergency contact insert failed: ${error.message || JSON.stringify(error)}`)
+  }
+}
+
+export async function updateEmergencyContact(
+  userId: string,
+  updates: Partial<EmergencyContact>,
+): Promise<void> {
+  const updateData: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  }
+
+  if (updates.contactName !== undefined) updateData.contact_name = updates.contactName
+  if (updates.contactNumber !== undefined) updateData.contact_number = updates.contactNumber
+
+  const { error } = await supabase
+    .from("emergency_contacts")
+    .update(updateData)
+    .eq("user_id", userId)
+
+  if (error) console.error("Error updating emergency contact:", error)
+}
+
+//
+// ==============================
+// LIABILITY WAIVERS
+// ==============================
+//
+
+export async function getLiabilityWaiver(
+  userId: string,
+): Promise<LiabilityWaiver | null> {
+  const { data, error } = await supabase
+    .from("liability_waivers")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  if (error || !data) return null
+
+  return {
+    userId: data.user_id,
+    signatureName: data.signature_name,
+    signedDate: data.signed_date,
+    waiverAccepted: data.waiver_accepted,
+    createdAt: data.created_at,
+  }
+}
+
+export async function addLiabilityWaiver(
+  liabilityWaiver: LiabilityWaiver,
+): Promise<void> {
+  const insertData = {
+    user_id: liabilityWaiver.userId,
+    signature_name: liabilityWaiver.signatureName,
+    signed_date: liabilityWaiver.signedDate,
+    waiver_accepted: liabilityWaiver.waiverAccepted,
+    created_at: liabilityWaiver.createdAt,
+  }
+
+  const { data, error } = await supabase
+    .from("liability_waivers")
+    .insert([insertData])
+    .select()
+
+  if (error) {
+    console.error("Error adding liability waiver:", JSON.stringify(error, null, 2))
+    throw new Error(`Liability waiver insert failed: ${error.message || JSON.stringify(error)}`)
   }
 }
 
@@ -263,7 +548,7 @@ export async function getScanLogsByUserId(
 
 //
 // ==============================
-// ACTIVE SESSIONS (CRITICAL FIX)
+// ACTIVE SESSIONS
 // ==============================
 //
 
@@ -419,6 +704,11 @@ export async function addUsers(users: User[]): Promise<void> {
       name: u.name,
       email: u.email,
       phone: u.phone,
+      birthday: u.birthday || null,
+      age: u.age || null,
+      address: u.address || null,
+      goal: u.goal || null,
+      program_type: u.programType || null,
       height_cm: u.heightCm || null,
       weight_kg: u.weightKg || null,
       created_at: u.createdAt,
@@ -444,6 +734,14 @@ export const storageService = {
   getSubscriptions,
   getSubscriptionByUserId,
   addOrUpdateSubscription,
+  getMedicalHistory,
+  addMedicalHistory,
+  updateMedicalHistory,
+  getEmergencyContact,
+  addEmergencyContact,
+  updateEmergencyContact,
+  getLiabilityWaiver,
+  addLiabilityWaiver,
   getScanLogs,
   addScanLog,
   getTodayScanLogs,

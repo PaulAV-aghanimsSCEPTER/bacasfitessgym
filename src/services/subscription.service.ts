@@ -105,13 +105,18 @@ export async function renewWalkIn(
   endDate: Date
 ): Promise<Subscription> {
   const now = new Date()
+  now.setHours(0, 0, 0, 0) // Start at beginning of day
+
+  // Set end time to 11:59:59 PM of the selected end date
+  const end = new Date(endDate)
+  end.setHours(23, 59, 59, 999)
 
   const subscription: Subscription = {
     userId,
     startDate: now.toISOString(),
-    endDate: endDate.toISOString(),
+    endDate: end.toISOString(),
     status: "active",
-    createdAt: now.toISOString(),
+    createdAt: new Date().toISOString(),
   }
 
   await storage.addOrUpdateSubscription(subscription)
