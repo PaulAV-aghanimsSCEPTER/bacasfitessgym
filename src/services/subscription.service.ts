@@ -9,8 +9,10 @@ export function isSubscriptionActive(
 ): boolean {
   if (!subscription) return false
   const now = new Date()
+  const startDate = new Date(subscription.startDate)
   const endDate = new Date(subscription.endDate)
-  return subscription.status === "active" && endDate >= now
+  // Check if subscription is active AND current date is within the valid range
+  return subscription.status === "active" && startDate <= now && endDate >= now
 }
 
 /* ================= CREATE REGULAR SUB ================= */
@@ -102,10 +104,12 @@ export async function renewSubscription(
 /* ================= RENEW WALK-IN ================= */
 export async function renewWalkIn(
   userId: string,
-  endDate: Date
+  endDate: Date,
+  startDate?: Date
 ): Promise<Subscription> {
-  const now = new Date()
-  now.setHours(0, 0, 0, 0) // Start at beginning of day
+  // Use provided start date or default to now
+  const start = startDate ? new Date(startDate) : new Date()
+  start.setHours(0, 0, 0, 0) // Start at beginning of day
 
   // Set end time to 11:59:59 PM of the selected end date
   const end = new Date(endDate)
@@ -113,7 +117,7 @@ export async function renewWalkIn(
 
   const subscription: Subscription = {
     userId,
-    startDate: now.toISOString(),
+    startDate: start.toISOString(),
     endDate: end.toISOString(),
     status: "active",
     createdAt: new Date().toISOString(),

@@ -11,7 +11,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { Calendar, Clock } from "lucide-react"
+import { Calendar, Sun } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface RenewMemberDialogProps {
@@ -22,10 +22,10 @@ interface RenewMemberDialogProps {
   onRenewed: () => void
 }
 
-type SubscriptionType = "regular" | "walkin"
-type RegularDuration = 1 | 6 | 12
+type MembershipType = "monthly" | "daily"
+type MonthlyDuration = 1 | 6 | 12
 
-const REGULAR_OPTIONS: { label: string; months: RegularDuration }[] = [
+const MONTHLY_OPTIONS: { label: string; months: MonthlyDuration }[] = [
   { label: "1 Month", months: 1 },
   { label: "6 Months", months: 6 },
   { label: "1 Year", months: 12 },
@@ -38,9 +38,9 @@ export function RenewMemberDialog({
   onOpenChange,
   onRenewed,
 }: RenewMemberDialogProps) {
-  const [subscriptionType, setSubscriptionType] =
-    useState<SubscriptionType>("regular")
-  const [selectedDuration, setSelectedDuration] = useState<RegularDuration>(1)
+  const [isAnnualPlan, setIsAnnualPlan] = useState<boolean | null>(null)
+  const [membershipType, setMembershipType] = useState<MembershipType>("monthly")
+  const [selectedDuration, setSelectedDuration] = useState<MonthlyDuration>(1)
   const [startDate, setStartDate] = useState<string>(
     new Date().toISOString().split("T")[0]
   )
@@ -53,17 +53,24 @@ export function RenewMemberDialog({
     setIsSubmitting(true)
 
     try {
-      if (subscriptionType === "regular") {
-        await subscriptionService.renewSubscription(userId, selectedDuration)
+      if (isAnnualPlan) {
+        if (membershipType === "monthly") {
+          // Regular monthly subscription (1, 6, or 12 months)
+          await subscriptionService.renewSubscription(userId, selectedDuration)
+        } else {
+          // Daily subscription - expires at 12:00 AM
+          await subscriptionService.renewDaily(userId)
+        }
       } else {
-        if (!endDate) {
-          alert("Please select an end date")
+        // Walk-in with custom dates
+        if (!startDate || !endDate) {
+          alert("Please select start and end dates")
           setIsSubmitting(false)
           return
         }
+        const start = new Date(startDate)
         const end = new Date(endDate)
-        end.setHours(23, 59, 59, 999)
-        await subscriptionService.renewWalkIn(userId, end)
+        await subscriptionService.renewWalkIn(userId, end, start)
       }
 
       onRenewed()
@@ -77,7 +84,8 @@ export function RenewMemberDialog({
   }
 
   const resetForm = () => {
-    setSubscriptionType("regular")
+    setIsAnnualPlan(null)
+    setMembershipType("monthly")
     setSelectedDuration(1)
     setStartDate(new Date().toISOString().split("T")[0])
     setEndDate("")
@@ -86,6 +94,13 @@ export function RenewMemberDialog({
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) resetForm()
     onOpenChange(newOpen)
+  }
+
+  const isSubmitDisabled = () => {
+    if (isSubmitting) return true
+    if (isAnnualPlan === null) return true
+    if (!isAnnualPlan && (!startDate || !endDate)) return true
+    return false
   }
 
   return (
@@ -99,80 +114,133 @@ export function RenewMemberDialog({
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {/* Subscription Type Tabs */}
-          <div className="flex rounded-lg border p-1 gap-1">
-            <button
-              type="button"
-              onClick={() => setSubscriptionType("regular")}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
-                subscriptionType === "regular"
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
-              )}
-            >
-              <Clock className="w-4 h-4" />
-              Regular
-            </button>
-            <button
-              type="button"
-              onClick={() => setSubscriptionType("walkin")}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
-                subscriptionType === "walkin"
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
-              )}
-            >
-              <Calendar className="w-4 h-4" />
-              Walk-in
-            </button>
+          {/* Question A: Avail annual membership plan? */}
+          <div className="space-y-3">
+            <Label className="text-base">
+              A. Avail annual membership plan? <span className="text-destructive">*</span>
+            </Label>
+            <div className="space-y-2">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="radio"
+                  name="annualPlan"
+                  checked={isAnnualPlan === true}
+                  onChange={() => setIsAnnualPlan(true)}
+                  className="w-4 h-4 accent-primary"
+                />
+                <span className="text-sm">Yes</span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="radio"
+                  name="annualPlan"
+                  checked={isAnnualPlan === false}
+                  onChange={() => setIsAnnualPlan(false)}
+                  className="w-4 h-4 accent-primary"
+                />
+                <span className="text-sm">No</span>
+              </label>
+            </div>
           </div>
 
-          {/* Regular Subscription Options */}
-          {subscriptionType === "regular" && (
-            <div className="space-y-3">
-              <Label>Select Duration</Label>
-              <div className="grid grid-cols-2 gap-2">
-                {REGULAR_OPTIONS.map((option) => (
-                  <button
-                    key={option.months}
-                    type="button"
-                    onClick={() => setSelectedDuration(option.months)}
-                    className={cn(
-                      "px-4 py-3 rounded-lg border text-sm font-medium transition-colors",
-                      selectedDuration === option.months
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border hover:bg-muted"
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+          {/* Option A: Yes - Show membership type selection */}
+          {isAnnualPlan === true && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="space-y-3">
+                <Label className="text-base">
+                  What membership type? <span className="text-destructive">*</span>
+                </Label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="membershipType"
+                      checked={membershipType === "monthly"}
+                      onChange={() => setMembershipType("monthly")}
+                      className="w-4 h-4 accent-primary"
+                    />
+                    <span className="text-sm">Monthly</span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="membershipType"
+                      checked={membershipType === "daily"}
+                      onChange={() => setMembershipType("daily")}
+                      className="w-4 h-4 accent-primary"
+                    />
+                    <span className="text-sm">Daily</span>
+                  </label>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Subscription will start today and end in {selectedDuration}{" "}
-                month{selectedDuration > 1 ? "s" : ""}.
-              </p>
+
+              {/* Monthly Duration Options */}
+              {membershipType === "monthly" && (
+                <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <Label>Select Duration</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {MONTHLY_OPTIONS.map((option) => (
+                      <button
+                        key={option.months}
+                        type="button"
+                        onClick={() => setSelectedDuration(option.months)}
+                        className={cn(
+                          "px-3 py-3 rounded-lg border text-sm font-medium transition-colors",
+                          selectedDuration === option.months
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border hover:bg-muted"
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Subscription will start today and end in {selectedDuration}{" "}
+                    month{selectedDuration > 1 ? "s" : ""}.
+                  </p>
+                </div>
+              )}
+
+              {/* Daily Info */}
+              {membershipType === "daily" && (
+                <div className="p-4 rounded-lg bg-muted/50 border animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Sun className="w-4 h-4 text-amber-500" />
+                    <span className="font-medium">Daily Pass</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    This subscription will be valid for today only and expires at{" "}
+                    <span className="font-medium">12:00 AM (midnight)</span>.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Walk-in Subscription Options */}
-          {subscriptionType === "walkin" && (
-            <div className="space-y-4">
+          {/* Option B: No - Walk-in with custom dates */}
+          {isAnnualPlan === false && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <Calendar className="w-4 h-4" />
+                Walk-in Subscription
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="start-date">Start Date</Label>
                 <input
                   id="start-date"
                   type="date"
                   value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  onChange={(e) => {
+                    setStartDate(e.target.value)
+                    // Reset end date if it's before new start date
+                    if (endDate && e.target.value > endDate) {
+                      setEndDate("")
+                    }
+                  }}
                   className="w-full px-3 py-2 rounded-md border bg-background text-sm"
-                  disabled
                 />
-                <p className="text-xs text-muted-foreground">
-                  Start date is set to today.
-                </p>
               </div>
 
               <div className="space-y-2">
@@ -187,14 +255,24 @@ export function RenewMemberDialog({
                 />
               </div>
 
-              {endDate && (
+              {startDate && endDate && (
                 <p className="text-xs text-muted-foreground">
-                  Subscription will be active until{" "}
-                  {new Date(endDate).toLocaleDateString("en-PH", {
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  })}
+                  Subscription will be active from{" "}
+                  <span className="font-medium">
+                    {new Date(startDate).toLocaleDateString("en-PH", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}
+                  </span>{" "}
+                  to{" "}
+                  <span className="font-medium">
+                    {new Date(endDate).toLocaleDateString("en-PH", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}
+                  </span>
                   .
                 </p>
               )}
@@ -210,12 +288,7 @@ export function RenewMemberDialog({
           >
             Cancel
           </Button>
-          <Button
-            onClick={handleRenew}
-            disabled={
-              isSubmitting || (subscriptionType === "walkin" && !endDate)
-            }
-          >
+          <Button onClick={handleRenew} disabled={isSubmitDisabled()}>
             {isSubmitting ? "Renewing..." : "Renew Subscription"}
           </Button>
         </DialogFooter>
