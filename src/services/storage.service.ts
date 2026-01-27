@@ -504,13 +504,23 @@ export async function addScanLog(log: ScanLog): Promise<void> {
 }
 
 export async function getTodayScanLogs(): Promise<ScanLog[]> {
-  const today = new Date().toISOString().split("T")[0]
+  // Get current date in Philippine timezone
+  const nowPH = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" })
+  const todayPH = new Date(nowPH)
+  
+  // Get start of day (00:00:00) in PH timezone
+  const startOfDayPH = new Date(todayPH)
+  startOfDayPH.setHours(0, 0, 0, 0)
+  
+  // Get end of day (23:59:59) in PH timezone
+  const endOfDayPH = new Date(todayPH)
+  endOfDayPH.setHours(23, 59, 59, 999)
 
   const { data, error } = await supabase
     .from("scan_logs")
     .select("*")
-    .gte("timestamp", `${today}T00:00:00`)
-    .lte("timestamp", `${today}T23:59:59`)
+    .gte("timestamp", startOfDayPH.toISOString())
+    .lte("timestamp", endOfDayPH.toISOString())
     .order("timestamp", { ascending: false })
 
   if (error) return []
